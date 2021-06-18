@@ -60,6 +60,7 @@ if __name__ == "__main__":
             print(f'\nEnvironment solved in {i-100} episodes!\tAverage Score: {np.mean(deq):.2f}')
             torch.save(agent.model.state_dict(), 'actor_critic_lunar_lander.pth')
             break
+    
     x = input()
     if x == 'y':
         torch.save(agent.model.state_dict(), 'actor_critic_lunar_lander.pth')
