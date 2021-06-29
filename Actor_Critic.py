@@ -9,10 +9,12 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.distributions.categorical as c
 from collections import deque
+from torch.utils.tensorboard import SummaryWriter
+writer = SummaryWriter()
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
 ###############################################
-LR = 0.1
+LR = 0.00005
 NUM_EPISODES = 10000
 GAMMA = 0.99
 ###############################################
@@ -51,25 +53,19 @@ class Actor_critic(nn.Module):
     def __init__(self):
         super(Actor_critic,self).__init__()
         self.actor_linear_stack = nn.Sequential(
-            nn.Linear(8,50),
+            nn.Linear(8,64),
             nn.ReLU(),
-            nn.Linear(50,50),
+            nn.Linear(64,32),
             nn.ReLU(),
-            nn.Linear(50,50),
-            nn.ReLU(),
-            nn.Linear(50,50),
-            nn.ReLU(),
-            nn.Linear(50,50),
-            nn.ReLU(),
-            nn.Linear(50,4),
+            nn.Linear(32,4),
             nn.Softmax()
         )
         self.critic_linear_stack = nn.Sequential(
-            nn.Linear(8,60),
+            nn.Linear(8,32),
             nn.ReLU(),
-            nn.Linear(60,10),
+            nn.Linear(32,32),
             nn.ReLU(),
-            nn.Linear(10,4)
+            nn.Linear(32,1)
         )
     def forward(self,x):
         actor = self.actor_linear_stack(x)
@@ -89,24 +85,24 @@ class Agent:
         self.total_rewards = 0
     
     def train_loop(self):
-        probs, q = (self.model((torch.from_numpy(self.state).unsqueeze(0).float().to(device))))
+        probs, v = (self.model((torch.from_numpy(self.state).unsqueeze(0).float().to(device))))
         probs = torch.squeeze(probs)
         m = c.Categorical(probs)
         action = m.sample()
         next_state, reward, done, _ = self.env.step(action.item())
         self.env.render()
-        probs2, q_prime = self.model(torch.from_numpy(next_state).unsqueeze(0).float().to(device))
-        probs2 = torch.squeeze(probs2)
+        _, v_prime = self.model(torch.from_numpy(next_state).unsqueeze(0).float().to(device))
+        # probs2 = torch.squeeze(probs2)
         # q = self.critic(torch.from_numpy(self.state).unsqueeze(0).float().to(device))
         # probs2 = (self.actor((torch.from_numpy(next_state).unsqueeze(0)).float().to(device)))
-        m2 = c.Categorical(probs2)
-        action2 = m2.sample().item()
+        # m2 = c.Categorical(probs2)
+        # action2 = m2.sample().item()
         if done == True:
-            q_prime[0][action2] = 0
-        td_error = reward + GAMMA*q_prime[0][action2] - q[0][action]
+            v_prime[0] = 0
+        td_error = reward + GAMMA*v_prime[0] - v[0]
         loss_a = -m.log_prob(action) * td_error
         loss_obj = nn.MSELoss()
-        loss_c = -loss_obj(torch.tensor([reward], device=device).float() + GAMMA*q_prime[0][action2].float(), q[0][action].float())
+        loss_c = loss_obj(torch.tensor([reward], device=device).float() + GAMMA*v_prime[0].float(), v[0].float())
         loss = loss_a + loss_c
         # self.optimizer_actor.zero_grad()
         # self.optimizer_critic.zero_grad()
@@ -127,12 +123,13 @@ class Agent:
 
 if __name__ == "__main__":
     agent = Agent()
-    # deq = deque(maxlen = 100)
-    # scores = []
     for i in range(NUM_EPISODES):
         done = False
         total_reward = 0
         while not done:
             done, reward = agent.train_loop()
             total_reward += reward
-        print(f"Number of Episodes : {i+1}   Total reward = {total_reward}")    
+        writer.add_scalar("reward", total_reward, i)
+        writer.flush()
+        print(f"Number of Episodes : {i+1}   Total reward = {total_reward}")
+    writer.close()
